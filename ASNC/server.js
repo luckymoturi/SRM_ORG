@@ -2,15 +2,15 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const path = require('path');
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-// MySQL Configuration
+// MySQL Configuration using environment variables
 const dbConfig = {
-  host: 'localhost',
-  user: 'root',
-  password: 'password', // Change to your MySQL password
-  database: 'srm_db',
-  port: 3306,       // Your MySQL port
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || 'password', // Use environment variable for password
+  database: process.env.DB_NAME || 'srm_db',
+  port: process.env.DB_PORT || 3306,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -46,17 +46,16 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-
 app.post('/api/evaluations', async (req, res) => {
   try {
     const { data } = req.body;
-    
+
     // Map form fields to database columns
     const evaluationData = {
       category: data.category,
       sub_category: data.subCategory,
       supplier_name: data.supplierName,
-      evaluation_month: data.month, 
+      evaluation_month: data.month,
       portfolio_diversity: parseFloat(data.portfolio_diversity) || 0,
       credit_term: parseFloat(data.credit_term) || 0,
       capacity_utilisation: parseFloat(data.capacity_utilisation) || 0,
@@ -77,16 +76,16 @@ app.post('/api/evaluations', async (req, res) => {
       `INSERT INTO supplier_evaluations SET ?`,
       evaluationData
     );
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Evaluation submitted successfully',
       evaluationId: result.insertId
     });
   } catch (err) {
     console.error('Database Error:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to save evaluation',
       error: err.message
     });
@@ -112,8 +111,7 @@ app.get('/api/evaluations', async (req, res) => {
 async function startServer() {
   if (await testConnection()) {
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-      console.log(`MySQL database: ${dbConfig.database} on port ${dbConfig.port}`);
+      console.log(`Server running on port ${PORT}`);
     });
   } else {
     console.error('Failed to start server due to database connection issues');
