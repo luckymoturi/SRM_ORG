@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SRM 2.0</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>SRM 2.0</h1>
+    <form id="supplierForm">
+      <div class="row">
+        <div class="form-group">
+          <label for="category">Category</label>
+          <select id="category" name="category" required>
+            <option value="">Select Category</option>
+            <option value="RM">RM</option>
+            <option value="PM">PM</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="subCategory">Sub-Category</label>
+          <select id="subCategory" name="subCategory" required>
+            <option value="">Select Sub-Category</option>
+            <option value="Agri">Agri</option>
+            <option value="Nutri">Nutri</option>
+            <option value="Dairy">Dairy</option>
+            <option value="Packaging">Packaging</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="supplierName">Supplier Name</label>
+          <select id="supplierName" name="supplierName" required>
+            <option value="">Select Supplier Name</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="month">Month</label>
+          <input type="month" id="month" name="month" required />
+        </div>
+      </div>
+
+      <!-- Evaluation questions will be rendered here -->
+      <div id="evaluation-questions"></div>
+
+      <button type="submit">Submit Evaluation</button>
+    </form>
+
+    <!-- Section to show results -->
+    <div id="results" class="hidden">
+      <h2>Recent Evaluations</h2>
+      <table id="evaluationsTable">
+        <thead>
+          <tr>
+            <th>Supplier Name</th>
+            <th>Month</th>
+            <th>Total Score</th>
+            <th>Evaluated On</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Data will be dynamically inserted here -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- JS file (assuming it's named script.js) -->
+  <script src="script.js"></script>
+</body>
+</html>

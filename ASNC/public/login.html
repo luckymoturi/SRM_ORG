@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .login-container {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      width: 380px;
+      text-align: center;
+      transition: all 0.4s ease;
+      animation: fadeIn 1s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .login-container:hover {
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    h2 {
+      margin-bottom: 2rem;
+      color: #333;
+      font-size: 2rem;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: calc(100% - 24px);
+      padding: 14px;
+      margin: 12px 0;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 16px;
+      transition: border-color 0.3s ease;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: #6e8efb;
+      outline: none;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(to right, #6e8efb, #a777e3);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      background: linear-gradient(to right, #5a7df4, #9c6bdb);
+    }
+
+    .error {
+      color: #ff3860;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .logo {
+      width: 180px;
+      margin: 0 auto 1.5rem;
+      animation: fadeIn 1.5s ease-in-out;
+       margin-bottom: 1rem;
+
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <img src="Sample Logo org.png" alt="Logo" class="logo">
+    <h2>Welcome Back</h2>
+    <div id="error" class="error">Invalid username or password</div>
+    <form id="loginForm">
+      <input type="text" id="username" placeholder="Username" required />
+      <input type="password" id="password" placeholder="Password" required />
+      <button type="submit">Login</button>
+    </form>
+  </div>
+
+  <script>
+    const DEFAULT_USERNAME = 'admin';
+    const DEFAULT_PASSWORD = 'admin@123';
+
+    const form = document.getElementById('loginForm');
+    const errorDiv = document.getElementById('error');
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      if (username === DEFAULT_USERNAME && password === DEFAULT_PASSWORD) {
+        window.location.href = 'http://localhost:3000/home';
+      } else {
+        errorDiv.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>
