@@ -6,19 +6,16 @@ const PORT = process.env.PORT || 3000;
 
 // MySQL Configuration using environment variables
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'password',
-  database: process.env.DB_NAME || 'srm_db',
+  host: process.env.DB_HOST || 'sql306.infinityfree.com',
+  user: process.env.DB_USER || 'if0_39177109',
+  password: process.env.DB_PASSWORD || 'SRMORG123',
+  database: process.env.DB_NAME || 'if0_39177109_srm_db',
   port: parseInt(process.env.DB_PORT) || 3306,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
   namedPlaceholders: true,
-  // Add SSL configuration for cloud databases
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false
-  } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 };
 
 console.log('Database Configuration:', {
@@ -33,6 +30,7 @@ console.log('Database Configuration:', {
 let pool;
 try {
   pool = mysql.createPool(dbConfig);
+  console.log('✅ MySQL pool created');
 } catch (err) {
   console.error('❌ Failed to create MySQL pool:', err);
   process.exit(1);
@@ -49,21 +47,21 @@ async function testConnection(retries = 3) {
     try {
       console.log(`Attempting database connection (attempt ${i + 1}/${retries})...`);
       const conn = await pool.getConnection();
-      
+
       // Test the connection with a simple query
       await conn.query('SELECT 1');
-      
+
       console.log('✅ MySQL connected successfully');
       conn.release();
       return true;
     } catch (err) {
       console.error(`❌ MySQL connection failed (attempt ${i + 1}/${retries}):`, err.message);
-      
+
       if (i === retries - 1) {
         console.error('All connection attempts failed');
         return false;
       }
-      
+
       // Wait 2 seconds before retry
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
@@ -75,48 +73,57 @@ async function testConnection(retries = 3) {
 async function initializeDatabase() {
   try {
     const conn = await pool.getConnection();
-    
-    // Create database if it doesn't exist (using query instead of execute)
-    await conn.query(`CREATE DATABASE IF NOT EXISTS ${dbConfig.database}`);
-    await conn.query(`USE ${dbConfig.database}`);
-    
+
     // Create supplier_evaluations table
     const createTableQuery = `
       CREATE TABLE IF NOT EXISTS supplier_evaluations (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        category VARCHAR(100) NOT NULL,
-        sub_category VARCHAR(100),
-        supplier_name VARCHAR(255) NOT NULL,
-        evaluation_month VARCHAR(20) NOT NULL,
-        portfolio_diversity DECIMAL(5,2) DEFAULT 0,
-        credit_term DECIMAL(5,2) DEFAULT 0,
-        capacity_utilisation DECIMAL(5,2) DEFAULT 0,
-        strategic_partnership DECIMAL(5,2) DEFAULT 0,
-        business_etiquette DECIMAL(5,2) DEFAULT 0,
-        inventory_carrying DECIMAL(5,2) DEFAULT 0,
-        advance_notice DECIMAL(5,2) DEFAULT 0,
-        knowledge_sharing DECIMAL(5,2) DEFAULT 0,
-        legal_contracts DECIMAL(5,2) DEFAULT 0,
-        cost_competitiveness DECIMAL(5,2) DEFAULT 0,
-        cost_model DECIMAL(5,2) DEFAULT 0,
-        sdp_rating DECIMAL(5,2) DEFAULT 0,
-        labelling_rating DECIMAL(5,2) DEFAULT 0,
-        supplier_quality DECIMAL(5,2) DEFAULT 0,
-        total_score DECIMAL(6,2) GENERATED ALWAYS AS (
-          portfolio_diversity + credit_term + capacity_utilisation + 
-          strategic_partnership + business_etiquette + inventory_carrying + 
-          advance_notice + knowledge_sharing + legal_contracts + 
-          cost_competitiveness + cost_model + sdp_rating + 
-          labelling_rating + supplier_quality
+        category VARCHAR(10) NOT NULL,
+        sub_category VARCHAR(50) NOT NULL,
+        supplier_name VARCHAR(100) NOT NULL,
+        evaluation_month VARCHAR(7) NOT NULL,
+        portfolio_diversity FLOAT,
+        credit_term FLOAT,
+        capacity_utilisation FLOAT,
+        strategic_partnership FLOAT,
+        business_etiquette FLOAT,
+        inventory_carrying FLOAT,
+        advance_notice FLOAT,
+        knowledge_sharing FLOAT,
+        legal_contracts FLOAT,
+        cost_competitiveness FLOAT,
+        cost_model FLOAT,
+        sdp_rating FLOAT,
+        labelling_rating FLOAT,
+        supplier_quality FLOAT,
+        sc_notification TINYINT DEFAULT 0,
+        supplier_audit TINYINT DEFAULT 0,
+        total_score FLOAT GENERATED ALWAYS AS (
+          COALESCE(portfolio_diversity, 0) +
+          COALESCE(credit_term, 0) +
+          COALESCE(capacity_utilisation, 0) +
+          COALESCE(strategic_partnership, 0) +
+          COALESCE(business_etiquette, 0) +
+          COALESCE(inventory_carrying, 0) +
+          COALESCE(advance_notice, 0) +
+          COALESCE(knowledge_sharing, 0) +
+          COALESCE(legal_contracts, 0) +
+          COALESCE(cost_competitiveness, 0) +
+          COALESCE(cost_model, 0) +
+          COALESCE(sdp_rating, 0) +
+          COALESCE(labelling_rating, 0) +
+          COALESCE(supplier_quality, 0) +
+          COALESCE(sc_notification, 0) +
+          COALESCE(supplier_audit, 0)
         ) STORED,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
+        UNIQUE KEY unique_evaluation (supplier_name, evaluation_month)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `;
-    
+
     await conn.query(createTableQuery);
     console.log('✅ Database tables initialized successfully');
-    
+
     conn.release();
     return true;
   } catch (err) {
@@ -127,8 +134,8 @@ async function initializeDatabase() {
 
 // Routes
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     database: pool ? 'Connected' : 'Disconnected'
   });
@@ -173,7 +180,9 @@ app.post('/api/evaluations', async (req, res) => {
       cost_model: parseFloat(data.cost_model) || 0,
       sdp_rating: parseFloat(data.sdp_rating) || 0,
       labelling_rating: parseFloat(data.labelling_rating) || 0,
-      supplier_quality: parseFloat(data.supplier_quality) || 0
+      supplier_quality: parseFloat(data.supplier_quality) || 0,
+      sc_notification: parseInt(data.sc_notification) || 0,
+      supplier_audit: parseInt(data.supplier_audit) || 0
     };
 
     conn = await pool.getConnection();
@@ -212,8 +221,8 @@ app.get('/api/evaluations', async (req, res) => {
     res.json({ success: true, data: rows });
   } catch (err) {
     console.error('Database Error:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to load evaluations',
       error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
     });
@@ -260,14 +269,14 @@ process.on('SIGINT', async () => {
 async function startServer() {
   try {
     console.log('Starting server...');
-    
+
     // Test database connection
     const isConnected = await testConnection();
-    
+
     if (isConnected) {
       // Initialize database tables
       await initializeDatabase();
-      
+
       // Start the server
       app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Server running on port ${PORT}`);
@@ -275,11 +284,10 @@ async function startServer() {
       });
     } else {
       console.error('❌ Failed to connect to database');
-      
+
       // In production, you might want to start the server anyway
-      // and handle database errors gracefully
       if (process.env.NODE_ENV === 'production') {
-        console.log('⚠️  Starting server without database connection (production mode)');
+        console.log('⚠️ Starting server without database connection (production mode)');
         app.listen(PORT, '0.0.0.0', () => {
           console.log(`🚀 Server running on port ${PORT} (DATABASE DISCONNECTED)`);
         });
