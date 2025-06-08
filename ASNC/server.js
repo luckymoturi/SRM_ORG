@@ -1,24 +1,18 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 const path = require('path');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// MySQL Configuration using environment variables
+// PostgreSQL Configuration using environment variables
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'password',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'admin',
   database: process.env.DB_NAME || 'srm_db',
-  port: parseInt(process.env.DB_PORT) || 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  namedPlaceholders: true,
-  // Add SSL configuration for cloud databases
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false
-  } : false
+  port: parseInt(process.env.DB_PORT) || 5432,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 };
 
 console.log('Database Configuration:', {
@@ -29,14 +23,8 @@ console.log('Database Configuration:', {
   ssl: dbConfig.ssl
 });
 
-// Create MySQL pool
-let pool;
-try {
-  pool = mysql.createPool(dbConfig);
-} catch (err) {
-  console.error('❌ Failed to create MySQL pool:', err);
-  process.exit(1);
-}
+// Create PostgreSQL pool
+const pool = new Pool(dbConfig);
 
 // Middleware
 app.use(express.json());
@@ -48,23 +36,14 @@ async function testConnection(retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       console.log(`Attempting database connection (attempt ${i + 1}/${retries})...`);
-      const conn = await pool.getConnection();
-      
-      // Test the connection with a simple query
-      await conn.query('SELECT 1');
-      
-      console.log('✅ MySQL connected successfully');
-      conn.release();
+      const client = await pool.connect();
+      await client.query('SELECT 1');
+      console.log('✅ PostgreSQL connected successfully');
+      client.release();
       return true;
     } catch (err) {
-      console.error(`❌ MySQL connection failed (attempt ${i + 1}/${retries}):`, err.message);
-      
-      if (i === retries - 1) {
-        console.error('All connection attempts failed');
-        return false;
-      }
-      
-      // Wait 2 seconds before retry
+      console.error(`❌ PostgreSQL connection failed (attempt ${i + 1}/${retries}):`, err.message);
+      if (i === retries - 1) return false;
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
@@ -74,16 +53,10 @@ async function testConnection(retries = 3) {
 // Initialize database tables
 async function initializeDatabase() {
   try {
-    const conn = await pool.getConnection();
-    
-    // Create database if it doesn't exist (using query instead of execute)
-    await conn.query(`CREATE DATABASE IF NOT EXISTS ${dbConfig.database}`);
-    await conn.query(`USE ${dbConfig.database}`);
-    
-    // Create supplier_evaluations table
+    const client = await pool.connect();
     const createTableQuery = `
       CREATE TABLE IF NOT EXISTS supplier_evaluations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         category VARCHAR(100) NOT NULL,
         sub_category VARCHAR(100),
         supplier_name VARCHAR(255) NOT NULL,
@@ -110,25 +83,21 @@ async function initializeDatabase() {
           labelling_rating + supplier_quality
         ) STORED,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     `;
-    
-    await conn.query(createTableQuery);
+    await client.query(createTableQuery);
     console.log('✅ Database tables initialized successfully');
-    
-    conn.release();
-    return true;
+    client.release();
   } catch (err) {
     console.error('❌ Database initialization failed:', err);
-    return false;
   }
 }
 
 // Routes
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     database: pool ? 'Connected' : 'Disconnected'
   });
@@ -143,18 +112,13 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/evaluations', async (req, res) => {
-  let conn;
+  let client;
   try {
     const { data } = req.body;
-
     if (!data) {
-      return res.status(400).json({
-        success: false,
-        message: 'No data provided'
-      });
+      return res.status(400).json({ success: false, message: 'No data provided' });
     }
 
-    // Map form fields to database columns
     const evaluationData = {
       category: data.category || '',
       sub_category: data.subCategory || '',
@@ -176,16 +140,23 @@ app.post('/api/evaluations', async (req, res) => {
       supplier_quality: parseFloat(data.supplier_quality) || 0
     };
 
-    conn = await pool.getConnection();
-    const [result] = await conn.query(
-      'INSERT INTO supplier_evaluations SET ?',
-      [evaluationData]
-    );
+    const keys = Object.keys(evaluationData);
+    const values = Object.values(evaluationData);
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+
+    const query = `
+      INSERT INTO supplier_evaluations (${keys.join(', ')})
+      VALUES (${placeholders})
+      RETURNING id
+    `;
+
+    client = await pool.connect();
+    const result = await client.query(query, values);
 
     res.json({
       success: true,
       message: 'Evaluation submitted successfully',
-      evaluationId: result.insertId
+      evaluationId: result.rows[0].id
     });
   } catch (err) {
     console.error('Database Error:', err);
@@ -195,101 +166,77 @@ app.post('/api/evaluations', async (req, res) => {
       error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
     });
   } finally {
-    if (conn) conn.release();
+    if (client) client.release();
   }
 });
 
 app.get('/api/evaluations', async (req, res) => {
-  let conn;
+  let client;
   try {
-    conn = await pool.getConnection();
-    const [rows] = await conn.query(`
+    client = await pool.connect();
+    const result = await client.query(`
       SELECT id, supplier_name, evaluation_month, total_score, created_at
       FROM supplier_evaluations
       ORDER BY created_at DESC
       LIMIT 100
     `);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: result.rows });
   } catch (err) {
     console.error('Database Error:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to load evaluations',
       error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
     });
   } finally {
-    if (conn) conn.release();
+    if (client) client.release();
   }
 });
 
-// Error handling middleware
+// Error handling
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error'
-  });
+  res.status(500).json({ success: false, message: 'Internal server error' });
 });
 
-// Handle 404 routes
+// 404 handler
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
+  res.status(404).json({ success: false, message: 'Route not found' });
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  if (pool) {
-    await pool.end();
-  }
+  console.log('SIGTERM received, shutting down...');
+  await pool.end();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully');
-  if (pool) {
-    await pool.end();
-  }
+  console.log('SIGINT received, shutting down...');
+  await pool.end();
   process.exit(0);
 });
 
-// Start Server
+// Start server
 async function startServer() {
-  try {
-    console.log('Starting server...');
-    
-    // Test database connection
-    const isConnected = await testConnection();
-    
-    if (isConnected) {
-      // Initialize database tables
-      await initializeDatabase();
-      
-      // Start the server
+  console.log('Starting server...');
+  const isConnected = await testConnection();
+  if (isConnected) {
+    await initializeDatabase();
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  } else {
+    console.error('❌ Database not connected. Server not started.');
+    if (process.env.NODE_ENV === 'production') {
+      console.log('⚠️ Starting server without DB (production fallback)');
       app.listen(PORT, '0.0.0.0', () => {
-        console.log(`🚀 Server running on port ${PORT}`);
-        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`🚀 Server running on port ${PORT} (DB DISCONNECTED)`);
       });
     } else {
-      console.error('❌ Failed to connect to database');
-      
-      // In production, you might want to start the server anyway
-      // and handle database errors gracefully
-      if (process.env.NODE_ENV === 'production') {
-        console.log('⚠️  Starting server without database connection (production mode)');
-        app.listen(PORT, '0.0.0.0', () => {
-          console.log(`🚀 Server running on port ${PORT} (DATABASE DISCONNECTED)`);
-        });
-      } else {
-        process.exit(1);
-      }
+      process.exit(1);
     }
-  } catch (err) {
-    console.error('❌ Failed to start server:', err);
-    process.exit(1);
   }
 }
 
